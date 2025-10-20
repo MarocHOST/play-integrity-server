@@ -1,0 +1,14 @@
+{
+  "name": "play-integrity-verify",
+  "version": "1.0.0",
+  "description": "Server to verify Google Play Integrity tokens",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:prod": "NODE_ENV=production node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "googleapis": "^131.0.0"
+  }
+}
