@@ -7,7 +7,8 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "@google-cloud/play-integrity": "^1.0.0",
+    // التغيير هنا: جلب الحزمة مباشرة من GitHub كبديل لمشكلة 404
+    "@google-cloud/play-integrity": "github:googleapis/nodejs-play-integrity#v1.0.0",
     "express": "^4.18.2"
   },
   "author": "",
