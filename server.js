@@ -1,4 +1,4 @@
-// server.js
+// server.js (مُعدَّل للتوافق مع Render.com وقراءة المفتاح السري من متغير البيئة)
 'use strict';
 
 const express = require('express');
@@ -6,22 +6,49 @@ const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
 
-// قراءة متغيرات البيئة
-const PORT = process.env.PORT || 3000;
-const SERVICE_ACCOUNT_PATH = process.env.SERVICE_ACCOUNT_PATH || './service_account.json';
-const PROJECT_NUMBER = process.env.PROJECT_NUMBER || '893510491856'; // غيّر إن لزم
-const API_KEY = process.env.API_KEY || ''; // مفتاح بسيط لحماية الendpoint (اختياري لكنه مهم)
+// ====================================================================
+// قراءة متغيرات البيئة - هذه هي الأسرار التي يجب إدخالها في Render.com
+// ====================================================================
+// المنفذ: نستخدم 10000 لأنه هو المنفذ القياسي لخدمات Render
+const PORT = process.env.PORT || 10000;
 
-// التأكد من وجود ملف حساب الخدمة
+// مفتاح JSON السري: سيتم قراءة كامل محتوى JSON من متغير البيئة
+const SERVICE_ACCOUNT_JSON = process.env.SERVICE_ACCOUNT_JSON;
+
+// رقم المشروع: يجب أن يكون رقم مشروعك الحقيقي في Google Cloud
+const PROJECT_NUMBER = process.env.PROJECT_NUMBER; 
+
+// مفتاح الحماية: كلمة سر بسيطة لحماية الـ endpoint (يجب عليك إدخالها)
+const API_KEY = process.env.API_KEY || ''; 
+
+// ====================================================================
+// منطق إنشاء ملف الخدمة المؤقت
+// ====================================================================
+// Render لا تسمح بوجود ملف service_account.json.
+// لذا، نقوم بإنشاء ملف مؤقت وكتابة محتوى SERVICE_ACCOUNT_JSON فيه.
+const SERVICE_ACCOUNT_PATH = path.join(__dirname, 'temp_sa.json');
+
+if (SERVICE_ACCOUNT_JSON) {
+  try {
+    // كتابة محتوى JSON في ملف مؤقت
+    fs.writeFileSync(SERVICE_ACCOUNT_PATH, SERVICE_ACCOUNT_JSON);
+    console.log('Temporary Service Account file created successfully.');
+  } catch (e) {
+    console.error('Failed to write Service Account file from environment variable:', e);
+    process.exit(1);
+  }
+} 
+
+// التأكد من وجود ملف حساب الخدمة (بعد المحاولة لإنشائه)
 if (!fs.existsSync(SERVICE_ACCOUNT_PATH)) {
-  console.error('Service account file not found at', SERVICE_ACCOUNT_PATH);
+  console.error('Service account file not found. Ensure SERVICE_ACCOUNT_JSON and PROJECT_NUMBER are set correctly in Environment Variables.');
   process.exit(1);
 }
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
-// middleware بسيط لحماية endpoint بواسطة API_KEY (إن حددته)
+// middleware بسيط لحماية endpoint بواسطة API_KEY 
 app.use((req, res, next) => {
   if (API_KEY) {
     const key = req.headers['x-api-key'] || req.query.api_key;
@@ -32,7 +59,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// إنشاء Google Auth client مع حساب الخدمة
+// إنشاء Google Auth client مع حساب الخدمة باستخدام المسار المؤقت
 const auth = new google.auth.GoogleAuth({
   keyFile: SERVICE_ACCOUNT_PATH,
   scopes: ['https://www.googleapis.com/auth/playintegrity']
@@ -43,6 +70,11 @@ app.post('/verifyIntegrity', async (req, res) => {
     const { integrityToken, nonce, packageName } = req.body;
     if (!integrityToken) {
       return res.status(400).json({ ok: false, error: 'integrityToken is required' });
+    }
+
+    // التحقق من وجود رقم المشروع
+    if (!PROJECT_NUMBER) {
+        return res.status(500).json({ ok: false, error: 'PROJECT_NUMBER environment variable is missing.' });
     }
 
     // الحصول على client
