@@ -1,6 +1,6 @@
 // استيراد المكتبات الأساسية
 const express = require('express');
-// هذا هو السطر الصحيح الوحيد لاستيراد Play Integrity API من مكتبة googleapis
+// استخدام مكتبة Googleapis الأصلية
 const { google } = require('googleapis');
 
 // تهيئة Express
@@ -83,13 +83,14 @@ app.post('/check-integrity', async (req, res) => {
     try {
         const client = await getPlayIntegrityClient();
 
-        // استدعاء API لتحليل الـ Token (باستخدام اسم الحزمة واسم الـ Token)
-        const response = await client.decodeIntegrityToken({
+        // ************* التعديل هنا: استخدام المسار الصحيح *************
+        const response = await client.v1.decodeIntegrityToken({
             packageName: packageName,
             requestBody: {
                 integrityToken: integrityToken
             }
         });
+        // ************************************************************
         
         // 4. تحليل النتيجة (Verdict) من استجابة googleapis
         // نستخدم tokenPayloadExternal لأنه الأسهل والأكثر ثباتاً
