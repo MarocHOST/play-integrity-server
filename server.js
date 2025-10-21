@@ -37,7 +37,7 @@ async function getPlayIntegrityClient() {
     });
 }
 
-// دالة تحليل الـ Verdict
+// دالة تحليل الـ Verdict مع معالجة أفضل للأخطاء
 function analyzeVerdict(verdict) {
     const verdictDetails = {
         MEETS_BASIC_INTEGRITY: false,
@@ -45,6 +45,7 @@ function analyzeVerdict(verdict) {
         MEETS_STRONG_INTEGRITY: false
     };
 
+    // التحقق الصارم: يجب أن يكون verdict مصفوفة
     if (verdict && Array.isArray(verdict)) {
         if (verdict.includes('MEETS_BASIC_INTEGRITY')) {
             verdictDetails.MEETS_BASIC_INTEGRITY = true;
@@ -96,6 +97,8 @@ app.post('/check-integrity', async (req, res) => {
         });
         
         const deviceIntegrity = response.data.tokenPayloadExternal.deviceIntegrity;
+        
+        // التحقق من أن deviceIntegrity موجود قبل محاولة الوصول إلى deviceRecognitionVerdict
         const verdict = deviceIntegrity ? deviceIntegrity.deviceRecognitionVerdict : [];
         const tokenPackageName = response.data.tokenPayloadExternal.requestDetails.requestPackageName;
 
@@ -107,12 +110,15 @@ app.post('/check-integrity', async (req, res) => {
              return res.status(403).json({ 
                 ok: false, 
                 error: 'Forbidden (Package name mismatch)',
-                verdictDetails: verdictDetails // يمكن إرسالها للتحليل
+                verdictDetails: verdictDetails
             });
         }
         
-        // 3. التحقق من النجاح العام (إذا كان meets_device_integrity)
-        const isSecure = verdict.includes('MEETS_DEVICE_INTEGRITY') || verdict.includes('MEETS_STRONG_INTEGRITY');
+        // 3. التحقق من النجاح العام (إذا كان meets_device_integrity أو strong)
+        // التحقق مرة أخرى من أن verdict مصفوفة قبل استخدام includes
+        const isSecure = (verdict && Array.isArray(verdict)) 
+                            ? (verdict.includes('MEETS_DEVICE_INTEGRITY') || verdict.includes('MEETS_STRONG_INTEGRITY'))
+                            : false; // إذا كان الـ verdict فارغاً أو غير موجود، فليست آمنة
 
         return res.json({ 
             ok: isSecure, // إرسال حالة النجاح/الفشل العامة
