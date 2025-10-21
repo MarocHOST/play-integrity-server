@@ -1,10 +1,11 @@
 // استيراد المكتبات الأساسية
 const express = require('express');
-const { IntegrityTokenClient } = require('@google/playintegrity');
+// هذا هو السطر الصحيح الوحيد لاستيراد Play Integrity API من مكتبة googleapis
+const { google } = require('googleapis');
 
 // تهيئة Express
 const app = express();
-// يتم استخدام PORT من متغيرات البيئة Render، وإذا لم يكن موجوداً، يستخدم 10000 (هذا صحيح بناءً على لقطة شاشتك)
+// يتم الحصول على البورت من متغيرات البيئة Render
 const PORT = process.env.PORT || 10000; 
 
 // Middleware لمعالجة JSON الواردة (ضروري لاستقبال الـ Token)
@@ -14,18 +15,48 @@ app.use(express.json());
 // متغيرات البيئة (Render)
 // *****************************************************************
 const SERVICE_ACCOUNT_JSON = process.env.SERVICE_ACCOUNT_JSON;
-const API_KEY = process.env.API_KEY; // MoroccoSecret2025
-const PROJECT_NUMBER = process.env.PROJECT_NUMBER; // 893518491856 (يجب أن يكون الرقم الصحيح: 893510491856)
+const API_KEY = process.env.API_KEY; 
+const PROJECT_NUMBER = process.env.PROJECT_NUMBER; 
 
 // *****************************************************************
-// 1. نقطة النهاية للتحقق من أن الخادم يعمل (Route صحيحة)
+// دالة تهيئة Google API Client
+// *****************************************************************
+async function getPlayIntegrityClient() {
+    let serviceAccount;
+    try {
+        serviceAccount = JSON.parse(SERVICE_ACCOUNT_JSON);
+    } catch (e) {
+        console.error('ERROR: Failed to parse SERVICE_ACCOUNT_JSON', e.message);
+        throw new Error('Internal Server Error (Service Account config)');
+    }
+
+    // تهيئة OAuth2 client باستخدام Service Account
+    const auth = new google.auth.JWT({
+        email: serviceAccount.client_email,
+        key: serviceAccount.private_key,
+        scopes: ['https://www.googleapis.com/auth/playintegrity']
+    });
+
+    // إنشاء Play Integrity API client
+    await auth.authorize();
+    
+    // تمرير auth client إلى مكتبة google
+    return google.playintegrity({
+        version: 'v1',
+        auth: auth
+    });
+}
+
+
+// *****************************************************************
+// 1. نقطة النهاية للتحقق من أن الخادم يعمل 
 // *****************************************************************
 app.get('/', (req, res) => {
     res.json({ ok: true, message: 'Play Integrity Server is running. Use POST /check-integrity to verify a token.' });
 });
 
 // *****************************************************************
-// 2. نقطة النهاية التي تستقبل الـ Token (الإصلاح: استخدام POST بدلاً من GET)
+// 2. نقطة النهاية التي تستقبل الـ Token (طريقة POST)
 // *****************************************************************
 app.post('/check-integrity', async (req, res) => {
     // 1. التحقق من المفتاح السري (API Key)
@@ -48,29 +79,24 @@ app.post('/check-integrity', async (req, res) => {
         });
     }
 
-    // 3. تحليل الـ Service Account (JSON)
-    let serviceAccount;
+    // 3. محاولة التحقق باستخدام googleapis
     try {
-        serviceAccount = JSON.parse(SERVICE_ACCOUNT_JSON);
-    } catch (e) {
-        console.error('ERROR: Failed to parse SERVICE_ACCOUNT_JSON', e);
-        return res.status(500).json({ ok: false, error: 'Internal Server Error (Service Account config)' });
-    }
-    
-    // 4. إعداد العميل والتحقق من الرمز
-    try {
-        const client = new IntegrityTokenClient(serviceAccount);
-        
+        const client = await getPlayIntegrityClient();
+
+        // استدعاء API لتحليل الـ Token (باستخدام اسم الحزمة واسم الـ Token)
         const response = await client.decodeIntegrityToken({
-            integrityToken: integrityToken,
-            cloudProjectNumber: PROJECT_NUMBER 
+            packageName: packageName,
+            requestBody: {
+                integrityToken: integrityToken
+            }
         });
-
-        // 5. تحليل النتيجة (Verdict)
-        const verdict = response.tokenPayload.deviceIntegrity.deviceRecognitionVerdict;
-
+        
+        // 4. تحليل النتيجة (Verdict) من استجابة googleapis
+        // نستخدم tokenPayloadExternal لأنه الأسهل والأكثر ثباتاً
+        const verdict = response.data.tokenPayloadExternal.deviceIntegrity.deviceRecognitionVerdict;
+        
         // التحقق من اسم الحزمة (لضمان أن الرمز جاء من تطبيقك)
-        const tokenPackageName = response.tokenPayload.requestDetails.requestPackageName;
+        const tokenPackageName = response.data.tokenPayloadExternal.requestDetails.requestPackageName;
         if (tokenPackageName !== packageName) {
              return res.status(403).json({ 
                 ok: false, 
@@ -78,7 +104,7 @@ app.post('/check-integrity', async (req, res) => {
             });
         }
         
-        // 6. إرجاع النتيجة
+        // 5. إرجاع النتيجة
         if (verdict.includes('MEETS_DEVICE_INTEGRITY')) {
             // الجهاز موثوق به
             return res.json({ 
@@ -97,7 +123,6 @@ app.post('/check-integrity', async (req, res) => {
 
     } catch (e) {
         console.error('Integrity Check Error:', e.message);
-        // إذا كان الخطأ هو خطأ في المفتاح السري أو مشكلة اتصال بـ Google Play
         return res.status(500).json({ 
             ok: false, 
             error: 'Failed to verify token with Google: ' + e.message 
