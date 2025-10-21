@@ -1,16 +1,14 @@
 {
-  "name": "play-integrity-server",
+  "name": "play-integrity-verify",
   "version": "1.0.0",
-  "description": "Server to verify Google Play Integrity Tokens",
+  "description": "Server to verify Google Play Integrity tokens",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "start:prod": "NODE_ENV=production node server.js"
   },
   "dependencies": {
-    // التغيير هنا: جلب الحزمة مباشرة من GitHub كبديل لمشكلة 404
-    "@google-cloud/play-integrity": "github:googleapis/nodejs-play-integrity#v1.0.0",
-    "express": "^4.18.2"
-  },
-  "author": "",
-  "license": "ISC"
+    "express": "^4.18.2",
+    "googleapis": "^131.0.0"
+  }
 }
