@@ -37,7 +37,9 @@ async function getPlayIntegrityClient() {
     });
 }
 
-// دالة تحليل الـ Verdict مع معالجة أفضل للأخطاء
+// ***************************************************************
+// دالة تحليل الـ Verdict مع تصحيح التسلسل المنطقي
+// ***************************************************************
 function analyzeVerdict(verdict) {
     const verdictDetails = {
         MEETS_BASIC_INTEGRITY: false,
@@ -47,18 +49,31 @@ function analyzeVerdict(verdict) {
 
     // التحقق الصارم: يجب أن يكون verdict مصفوفة
     if (verdict && Array.isArray(verdict)) {
-        if (verdict.includes('MEETS_BASIC_INTEGRITY')) {
-            verdictDetails.MEETS_BASIC_INTEGRITY = true;
-        }
+        
+        // 1. القراءة الصارمة لنتائج الفحص الفعلية من Google
         if (verdict.includes('MEETS_DEVICE_INTEGRITY')) {
             verdictDetails.MEETS_DEVICE_INTEGRITY = true;
         }
         if (verdict.includes('MEETS_STRONG_INTEGRITY')) {
             verdictDetails.MEETS_STRONG_INTEGRITY = true;
         }
+        
+        // القراءة الصريحة لفحص Basic Integrity (إذا كان موجوداً)
+        if (verdict.includes('MEETS_BASIC_INTEGRITY')) {
+            verdictDetails.MEETS_BASIC_INTEGRITY = true;
+        }
+
+        // 2. تطبيق التسلسل المنطقي (التصحيح)
+        // إذا كان الجهاز يفي بـ Device Integrity أو Strong Integrity،
+        // فمن الضروري منطقياً أنه يفي بـ Basic Integrity أيضاً (لتوافق النتائج مع GitHub)
+        if (verdictDetails.MEETS_DEVICE_INTEGRITY || verdictDetails.MEETS_STRONG_INTEGRITY) {
+             verdictDetails.MEETS_BASIC_INTEGRITY = true;
+        }
     }
     return verdictDetails;
 }
+// ***************************************************************
+
 
 // نقطة النهاية للتحقق من أن الخادم يعمل 
 app.get('/', (req, res) => {
@@ -102,23 +117,22 @@ app.post('/check-integrity', async (req, res) => {
         const verdict = deviceIntegrity ? deviceIntegrity.deviceRecognitionVerdict : [];
         const tokenPackageName = response.data.tokenPayloadExternal.requestDetails.requestPackageName;
 
-        // 1. تحليل النتائج المفصلة
+        // 1. تحليل النتائج المفصلة (باستخدام المنطق المُصحح)
         const verdictDetails = analyzeVerdict(verdict);
 
         // 2. التحقق من تطابق الحزمة
         if (tokenPackageName !== packageName) {
              return res.status(403).json({ 
-                ok: false, 
-                error: 'Forbidden (Package name mismatch)',
-                verdictDetails: verdictDetails
-            });
+                 ok: false, 
+                 error: 'Forbidden (Package name mismatch)',
+                 verdictDetails: verdictDetails
+             });
         }
         
         // 3. التحقق من النجاح العام (إذا كان meets_device_integrity أو strong)
-        // التحقق مرة أخرى من أن verdict مصفوفة قبل استخدام includes
-        const isSecure = (verdict && Array.isArray(verdict)) 
-                            ? (verdict.includes('MEETS_DEVICE_INTEGRITY') || verdict.includes('MEETS_STRONG_INTEGRITY'))
-                            : false; // إذا كان الـ verdict فارغاً أو غير موجود، فليست آمنة
+        // نعتمد هنا على النتائج التي تم تصحيح منطقها
+        const isSecure = verdictDetails.MEETS_DEVICE_INTEGRITY || verdictDetails.MEETS_STRONG_INTEGRITY;
+
 
         return res.json({ 
             ok: isSecure, // إرسال حالة النجاح/الفشل العامة
