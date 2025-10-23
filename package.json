@@ -1,21 +1,16 @@
 {
-  "name": "play-integrity-checker-server",
+  "name": "play-integrity-verify",
   "version": "1.0.0",
-  "description": "Official Nikolas Play Integrity Server for Render.com",
+  "description": "Server to verify Google Play Integrity tokens",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "start:prod": "NODE_ENV=production node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "googleapis": "^126.0.0"
+    "googleapis": "^131.0.0"
   },
-  "keywords": [
-    "play-integrity",
-    "google-play",
-    "integrity-check"
-  ],
-  "author": "Based on 1nikolas original code",
-  "license": "MIT"
+  "author": "",
+  "license": "ISC"
 }
