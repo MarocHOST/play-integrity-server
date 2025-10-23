@@ -38,7 +38,7 @@ async function getPlayIntegrityClient() {
 }
 
 // ***************************************************************
-// دالة تحليل الـ Verdict مع تصحيح التسلسل المنطقي
+// دالة تحليل الـ Verdict - الإصدار المصحح
 // ***************************************************************
 function analyzeVerdict(verdict) {
     const verdictDetails = {
@@ -47,10 +47,12 @@ function analyzeVerdict(verdict) {
         MEETS_STRONG_INTEGRITY: false
     };
 
-    // التحقق الصارم: يجب أن يكون verdict مصفوفة
+    // التحقق من أن verdict مصفوفة
     if (verdict && Array.isArray(verdict)) {
-        
-        // 1. القراءة الصارمة لنتائج الفحص الفعلية من Google
+        // القراءة الدقيقة للنتائج الفعلية من Google بدون تعديل
+        if (verdict.includes('MEETS_BASIC_INTEGRITY')) {
+            verdictDetails.MEETS_BASIC_INTEGRITY = true;
+        }
         if (verdict.includes('MEETS_DEVICE_INTEGRITY')) {
             verdictDetails.MEETS_DEVICE_INTEGRITY = true;
         }
@@ -58,26 +60,22 @@ function analyzeVerdict(verdict) {
             verdictDetails.MEETS_STRONG_INTEGRITY = true;
         }
         
-        // القراءة الصريحة لفحص Basic Integrity (إذا كان موجوداً)
-        if (verdict.includes('MEETS_BASIC_INTEGRITY')) {
-            verdictDetails.MEETS_BASIC_INTEGRITY = true;
-        }
-
-        // 2. تطبيق التسلسل المنطقي (التصحيح)
-        // إذا كان الجهاز يفي بـ Device Integrity أو Strong Integrity،
-        // فمن الضروري منطقياً أنه يفي بـ Basic Integrity أيضاً (لتوافق النتائج مع GitHub)
-        if (verdictDetails.MEETS_DEVICE_INTEGRITY || verdictDetails.MEETS_STRONG_INTEGRITY) {
-             verdictDetails.MEETS_BASIC_INTEGRITY = true;
-        }
+        // ✅ تم إزالة المنطق المعدل الذي كان يسبب المشاكل
+        // النتائج تعود كما هي من جوجل بدون أي تغيير
     }
+    
+    console.log('📊 نتائج الفحص الحقيقية:', verdictDetails);
     return verdictDetails;
 }
 // ***************************************************************
 
-
 // نقطة النهاية للتحقق من أن الخادم يعمل 
 app.get('/', (req, res) => {
-    res.json({ ok: true, message: 'Play Integrity Server is running. Use POST /check-integrity to verify a token.' });
+    res.json({ 
+        ok: true, 
+        message: 'Play Integrity Server is running. Use POST /check-integrity to verify a token.',
+        version: '1.0.0 - Fixed Version'
+    });
 });
 
 // نقطة النهاية التي تستقبل الـ Token (طريقة POST)
@@ -102,6 +100,8 @@ app.post('/check-integrity', async (req, res) => {
     }
 
     try {
+        console.log('🔄 بدء فحص النزاهة للحزمة:', packageName);
+        
         const client = await getPlayIntegrityClient();
 
         const response = await client.v1.decodeIntegrityToken({
@@ -117,7 +117,9 @@ app.post('/check-integrity', async (req, res) => {
         const verdict = deviceIntegrity ? deviceIntegrity.deviceRecognitionVerdict : [];
         const tokenPackageName = response.data.tokenPayloadExternal.requestDetails.requestPackageName;
 
-        // 1. تحليل النتائج المفصلة (باستخدام المنطق المُصحح)
+        console.log('🎯 النتائج الخام من جوجل:', verdict);
+
+        // 1. تحليل النتائج المفصلة (باستخدام المنطق المصحح)
         const verdictDetails = analyzeVerdict(verdict);
 
         // 2. التحقق من تطابق الحزمة
@@ -129,19 +131,31 @@ app.post('/check-integrity', async (req, res) => {
              });
         }
         
-        // 3. التحقق من النجاح العام (إذا كان meets_device_integrity أو strong)
-        // نعتمد هنا على النتائج التي تم تصحيح منطقها
-        const isSecure = verdictDetails.MEETS_DEVICE_INTEGRITY || verdictDetails.MEETS_STRONG_INTEGRITY;
+        // 3. التحقق من النجاح العام (المنطق المصحح)
+        // ✅ الآن نتحقق من BASIC + (DEVICE أو STRONG) لأقصى درجات الدقة
+        const isSecure = verdictDetails.MEETS_BASIC_INTEGRITY && 
+                        (verdictDetails.MEETS_DEVICE_INTEGRITY || verdictDetails.MEETS_STRONG_INTEGRITY);
 
+        // رسالة توضيحية حسب النتائج
+        let message = '';
+        if (isSecure) {
+            message = '✅ نجاح: الجهاز موثوق به وآمن.';
+        } else if (verdictDetails.MEETS_BASIC_INTEGRITY) {
+            message = '⚠️ تحذير: الجهاز يفي بالمتطلبات الأساسية فقط.';
+        } else {
+            message = '❌ خطر: الجهاز غير موثوق به.';
+        }
+
+        console.log('📝 النتيجة النهائية:', { isSecure, message, verdictDetails });
 
         return res.json({ 
-            ok: isSecure, // إرسال حالة النجاح/الفشل العامة
-            message: isSecure ? 'صحيح: الجهاز موثوق به بالكامل.' : 'خطر: الجهاز غير موثوق به.',
-            verdictDetails: verdictDetails // إرسال النتائج التفصيلية لواجهة المستخدم
+            ok: isSecure,
+            message: message,
+            verdictDetails: verdictDetails
         });
 
     } catch (e) {
-        console.error('Integrity Check Error:', e.message);
+        console.error('❌ Integrity Check Error:', e.message);
         return res.status(500).json({ 
             ok: false, 
             error: 'Failed to verify token with Google: ' + e.message 
@@ -149,7 +163,17 @@ app.post('/check-integrity', async (req, res) => {
     }
 });
 
+// نقطة جديدة لفحص صحة الخادم
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        service: 'Play Integrity Server'
+    });
+});
+
 // بدء الخادم
 app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
+    console.log(`🚀 Server listening on port ${PORT}`);
+    console.log(`📧 Health check available at: http://localhost:${PORT}/health`);
 });
