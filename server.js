@@ -1,155 +1,132 @@
-// استيراد المكتبات الأساسية
 const express = require('express');
 const { google } = require('googleapis');
 
-// تهيئة Express
 const app = express();
-const PORT = process.env.PORT || 10000; 
+const PORT = process.env.PORT || 10000;
 
+// Middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// متغيرات البيئة (Render)
+// متغيرات البيئة
+const PACKAGE_NAME = process.env.PACKAGE_NAME;
 const SERVICE_ACCOUNT_JSON = process.env.SERVICE_ACCOUNT_JSON;
-const API_KEY = process.env.API_KEY; 
-const PROJECT_NUMBER = process.env.PROJECT_NUMBER; 
 
-// دالة تهيئة Google API Client
-async function getPlayIntegrityClient() {
-    let serviceAccount;
+// دالة فك تشفير Integrity Token
+async function decodeIntegrityToken(token) {
     try {
-        serviceAccount = JSON.parse(SERVICE_ACCOUNT_JSON);
-    } catch (e) {
-        console.error('ERROR: Failed to parse SERVICE_ACCOUNT_JSON', e.message);
-        throw new Error('Internal Server Error (Service Account config)');
-    }
-
-    const auth = new google.auth.JWT({
-        email: serviceAccount.client_email,
-        key: serviceAccount.private_key,
-        scopes: ['https://www.googleapis.com/auth/playintegrity']
-    });
-
-    await auth.authorize();
-    
-    return google.playintegrity({
-        version: 'v1',
-        auth: auth
-    });
-}
-
-// ***************************************************************
-// دالة تحليل الـ Verdict مع تصحيح التسلسل المنطقي
-// ***************************************************************
-function analyzeVerdict(verdict) {
-    const verdictDetails = {
-        MEETS_BASIC_INTEGRITY: false,
-        MEETS_DEVICE_INTEGRITY: false,
-        MEETS_STRONG_INTEGRITY: false
-    };
-
-    // التحقق الصارم: يجب أن يكون verdict مصفوفة
-    if (verdict && Array.isArray(verdict)) {
+        const privatekey = JSON.parse(SERVICE_ACCOUNT_JSON);
         
-        // 1. القراءة الصارمة لنتائج الفحص الفعلية من Google
-        if (verdict.includes('MEETS_DEVICE_INTEGRITY')) {
-            verdictDetails.MEETS_DEVICE_INTEGRITY = true;
-        }
-        if (verdict.includes('MEETS_STRONG_INTEGRITY')) {
-            verdictDetails.MEETS_STRONG_INTEGRITY = true;
-        }
-        
-        // القراءة الصريحة لفحص Basic Integrity (إذا كان موجوداً)
-        if (verdict.includes('MEETS_BASIC_INTEGRITY')) {
-            verdictDetails.MEETS_BASIC_INTEGRITY = true;
-        }
+        const jwtClient = new google.auth.JWT(
+            privatekey.client_email,
+            null,
+            privatekey.private_key,
+            ['https://www.googleapis.com/auth/playintegrity']
+        );
 
-        // 2. تطبيق التسلسل المنطقي (التصحيح)
-        // إذا كان الجهاز يفي بـ Device Integrity أو Strong Integrity،
-        // فمن الضروري منطقياً أنه يفي بـ Basic Integrity أيضاً (لتوافق النتائج مع GitHub)
-        if (verdictDetails.MEETS_DEVICE_INTEGRITY || verdictDetails.MEETS_STRONG_INTEGRITY) {
-             verdictDetails.MEETS_BASIC_INTEGRITY = true;
-        }
-    }
-    return verdictDetails;
-}
-// ***************************************************************
+        const playintegrity = google.playintegrity({ version: 'v1', auth: jwtClient });
 
-
-// نقطة النهاية للتحقق من أن الخادم يعمل 
-app.get('/', (req, res) => {
-    res.json({ ok: true, message: 'Play Integrity Server is running. Use POST /check-integrity to verify a token.' });
-});
-
-// نقطة النهاية التي تستقبل الـ Token (طريقة POST)
-app.post('/check-integrity', async (req, res) => {
-    // التحقق من المفتاح السري (API Key)
-    const clientApiKey = req.header('X-API-KEY'); 
-    
-    if (!clientApiKey || clientApiKey !== API_KEY) {
-        return res.status(401).json({ 
-            ok: false, 
-            error: 'Unauthorized (invalid API key)' 
-        });
-    }
-
-    const { integrityToken, packageName } = req.body;
-
-    if (!integrityToken || !packageName) {
-        return res.status(400).json({ 
-            ok: false, 
-            error: 'Bad Request (missing integrityToken or packageName)' 
-        });
-    }
-
-    try {
-        const client = await getPlayIntegrityClient();
-
-        const response = await client.v1.decodeIntegrityToken({
-            packageName: packageName,
+        const response = await playintegrity.v1.decodeIntegrityToken({
+            packageName: PACKAGE_NAME,
             requestBody: {
-                integrityToken: integrityToken
+                integrityToken: token
             }
         });
-        
-        const deviceIntegrity = response.data.tokenPayloadExternal.deviceIntegrity;
-        
-        // التحقق من أن deviceIntegrity موجود قبل محاولة الوصول إلى deviceRecognitionVerdict
-        const verdict = deviceIntegrity ? deviceIntegrity.deviceRecognitionVerdict : [];
-        const tokenPackageName = response.data.tokenPayloadExternal.requestDetails.requestPackageName;
 
-        // 1. تحليل النتائج المفصلة (باستخدام المنطق المُصحح)
-        const verdictDetails = analyzeVerdict(verdict);
+        console.log('✅ نتائج جوجل:', JSON.stringify(response.data.tokenPayloadExternal, null, 2));
+        return response.data.tokenPayloadExternal;
 
-        // 2. التحقق من تطابق الحزمة
-        if (tokenPackageName !== packageName) {
-             return res.status(403).json({ 
-                 ok: false, 
-                 error: 'Forbidden (Package name mismatch)',
-                 verdictDetails: verdictDetails
-             });
-        }
-        
-        // 3. التحقق من النجاح العام (إذا كان meets_device_integrity أو strong)
-        // نعتمد هنا على النتائج التي تم تصحيح منطقها
-        const isSecure = verdictDetails.MEETS_DEVICE_INTEGRITY || verdictDetails.MEETS_STRONG_INTEGRITY;
+    } catch (error) {
+        console.error('❌ خطأ في فك التشفير:', error.message);
+        throw error;
+    }
+}
 
-
-        return res.json({ 
-            ok: isSecure, // إرسال حالة النجاح/الفشل العامة
-            message: isSecure ? 'صحيح: الجهاز موثوق به بالكامل.' : 'خطر: الجهاز غير موثوق به.',
-            verdictDetails: verdictDetails // إرسال النتائج التفصيلية لواجهة المستخدم
-        });
-
-    } catch (e) {
-        console.error('Integrity Check Error:', e.message);
-        return res.status(500).json({ 
-            ok: false, 
-            error: 'Failed to verify token with Google: ' + e.message 
+// نقطة النهاية الرئيسية
+app.get('/api/check', async (req, res) => {
+    const { token } = req.query;
+    
+    if (!token) {
+        return res.status(400).json({ 
+            error: 'No token provided' 
         });
     }
+
+    try {
+        console.log('🔄 معالجة طلب فحص النزاهة...');
+        console.log('📱 Token length:', token.length);
+        console.log('📦 Package Name:', PACKAGE_NAME);
+        
+        const result = await decodeIntegrityToken(token);
+        
+        // إرجاع النتائج كما هي من جوجل بدون تعديل
+        res.status(200).json(result);
+
+    } catch (error) {
+        console.error('❌ خطأ في API:', error);
+        res.status(500).json({ 
+            error: 'Google API error: ' + error.message 
+        });
+    }
+});
+
+// نقطة النهاية POST (اختيارية)
+app.post('/api/check', async (req, res) => {
+    const { integrityToken } = req.body;
+    
+    if (!integrityToken) {
+        return res.status(400).json({ 
+            error: 'No integrityToken provided' 
+        });
+    }
+
+    try {
+        console.log('🔄 معالجة طلب POST فحص النزاهة...');
+        const result = await decodeIntegrityToken(integrityToken);
+        
+        res.status(200).json(result);
+
+    } catch (error) {
+        console.error('❌ خطأ في API:', error);
+        res.status(500).json({ 
+            error: 'Google API error: ' + error.message 
+        });
+    }
+});
+
+// نقطة للتحقق من صحة الخادم
+app.get('/', (req, res) => {
+    res.json({ 
+        status: 'running',
+        message: 'Play Integrity Server is running - Nikolas Version',
+        endpoints: {
+            'GET': '/api/check?token=YOUR_TOKEN',
+            'POST': '/api/check with { "integrityToken": "YOUR_TOKEN" }'
+        },
+        packageName: PACKAGE_NAME
+    });
+});
+
+// نقطة health check
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        service: 'Play Integrity Server - Nikolas Version',
+        package: PACKAGE_NAME
+    });
+});
+
+// معالجة الأخطاء
+app.use((err, req, res, next) => {
+    console.error('💥 خطأ غير متوقع:', err);
+    res.status(500).json({ error: 'Internal server error' });
 });
 
 // بدء الخادم
 app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📦 Package Name: ${PACKAGE_NAME}`);
+    console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+    console.log(`🔗 API endpoint: http://localhost:${PORT}/api/check?token=YOUR_TOKEN`);
 });
