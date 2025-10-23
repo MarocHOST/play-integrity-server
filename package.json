@@ -1,23 +1,16 @@
 {
   "name": "play-integrity-verify",
-  "version": "1.0.1",
-  "description": "Server to verify Google Play Integrity tokens - Fixed Version",
+  "version": "1.0.0",
+  "description": "Server to verify Google Play Integrity tokens",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "start:prod": "NODE_ENV=production node server.js",
-    "dev": "node server.js"
+    "start:prod": "NODE_ENV=production node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
     "googleapis": "^131.0.0"
   },
-  "keywords": [
-    "play-integrity",
-    "google-play",
-    "security",
-    "verification"
-  ],
   "author": "",
   "license": "ISC"
 }
