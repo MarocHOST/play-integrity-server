@@ -103,7 +103,7 @@ app.post('/check-integrity', async (req, res) => {
         const deviceIntegrity = tokenPayloadExternal?.deviceIntegrity || {};
         const accountDetails = tokenPayloadExternal?.accountDetails || {};
         
-        // 4. التحقق الأمني: اسم الحزمة (نعتمد على حقل requestPackageName ليكون متوفراً دائماً)
+        // 4. التحقق الأمني: اسم الحزمة
         const packageNameInToken = requestDetails.requestPackageName;
         const isPackageNameValid = packageNameInToken === EXPECTED_PACKAGE_NAME; 
         
@@ -121,14 +121,17 @@ app.post('/check-integrity', async (req, res) => {
         console.log('   - Nonce: ', requestDetails.nonce);
         console.log('   - Device Recognition Verdict: ', deviceVerdictString || 'الحكم مفقود');
 
+        // 6. الحكم النهائي (منطق الأمان الشامل)
+        // الجهاز يُعتبر سليمًا إذا كان الحكم يتضمن إما MEETS_BASIC_INTEGRITY أو MEETS_DEVICE_INTEGRITY
+        const isBasicIntegrityMet = deviceVerdict.includes('MEETS_BASIC_INTEGRITY');
+        const isDeviceIntegrityMet = deviceVerdict.includes('MEETS_DEVICE_INTEGRITY');
 
-        // 6. الحكم النهائي (منطق الأمان الكامل)
-        // الجهاز يجب أن يجتاز "MEETS_BASIC_INTEGRITY" على الأقل.
-        const isDeviceIntegritySufficient = deviceVerdict.includes('MEETS_BASIC_INTEGRITY');
+        // isDeviceIntegritySufficient تكون true إذا كان أي من الحكمين (BASIC أو DEVICE) موجوداً
+        const isDeviceIntegritySufficient = isBasicIntegrityMet || isDeviceIntegrityMet;
 
         // الحكم النهائي يكون صحيحًا فقط إذا تحقق شرطان: 
-        // 1. اسم الحزمة صحيح (isPackageNameValid)
-        // 2. الجهاز يحقق الحد الأدنى من النزاهة (isDeviceIntegritySufficient)
+        // 1. اسم الحزمة صحيح
+        // 2. الجهاز يحقق الحد الأدنى من النزاهة (BASIC)
         const finalVerdict = isPackageNameValid && isDeviceIntegritySufficient;
 
         // إرسال الرد إلى تطبيق الأندرويد
