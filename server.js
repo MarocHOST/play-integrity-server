@@ -10,14 +10,14 @@ const PORT = process.env.PORT || 3000;
 // ** إعدادات الأمان والمشروع - يجب تعديلها **
 // --------------------------------------------------------------------------------
 
-// 🔴 تم التعديل: قراءة اسم الحزمة المتوقع من متغير البيئة، والاحتفاظ بقيمة افتراضية آمنة
+// قراءة اسم الحزمة المتوقع من متغير البيئة
 const EXPECTED_PACKAGE_NAME = process.env.EXPECTED_PACKAGE_NAME || 'org.morocco.mar'; 
 console.log(`[Config] EXPECTED_PACKAGE_NAME: ${EXPECTED_PACKAGE_NAME}`);
 
 // رقم مشروع Google Cloud (تأكد من مطابقته للقيمة في تطبيق الأندرويد)
 const CLOUD_PROJECT_NUMBER = '893510491856'; 
 
-// 🔴 تم التعديل: قراءة مفتاح API من متغير البيئة
+// قراءة مفتاح API من متغير البيئة
 const X_API_KEY = process.env.API_KEY || 'MoroccoSecret2025';
 if (X_API_KEY === 'MoroccoSecret2025') {
     console.warn("⚠️ تحذير: يرجى تغيير المفتاح السري 'MoroccoSecret2025' في متغير البيئة.");
@@ -97,28 +97,33 @@ app.post('/check-integrity', async (req, res) => {
         // استخراج محتويات الحمولة (Payload) المفككة
         const tokenPayloadExternal = response.data.tokenPayloadExternal;
         
-        // 🔴 تم استخدام Optional Chaining لتجنب خطأ Cannot read properties of undefined
+        // 3. استخدام Optional Chaining لضمان عدم وجود undefined
         const requestDetails = tokenPayloadExternal?.requestDetails || {};
         const appIntegrity = tokenPayloadExternal?.appIntegrity || {};
         const deviceIntegrity = tokenPayloadExternal?.deviceIntegrity || {};
         const accountDetails = tokenPayloadExternal?.accountDetails || {};
         
-        console.log('✅ تم فك تشفير الـ Token بنجاح.');
-        console.log('   - Nonce: ', requestDetails.nonce);
-        console.log('   - Device Recognition Verdict: ', deviceIntegrity.deviceRecognitionVerdict);
-        
-        // 3. التحقق الأمني: اسم الحزمة
-        const isPackageNameValid = appIntegrity.packageName === EXPECTED_PACKAGE_NAME; 
+        // 4. التحقق الأمني: اسم الحزمة (استخدام حقل requestPackageName الأكثر موثوقية في الاختبار)
+        // 🔴 تم التعديل: الاعتماد على requestDetails.requestPackageName للتحقق من اسم الحزمة
+        const packageNameInToken = requestDetails.requestPackageName;
+        const isPackageNameValid = packageNameInToken === EXPECTED_PACKAGE_NAME; 
+        
         if (!isPackageNameValid) {
-            console.warn('⚠️ تحذير: اسم الحزمة غير متطابق! المتوقع:', EXPECTED_PACKAGE_NAME, 'المُرسل في الرمز:', appIntegrity.packageName);
+            console.warn('⚠️ تحذير: اسم الحزمة غير متطابق! المتوقع:', EXPECTED_PACKAGE_NAME, 'المُرسل في الرمز:', packageNameInToken);
         } else {
             console.log('✅ اسم الحزمة متطابق.');
         }
 
-        // 4. الحكم النهائي: تحقق من نزاهة الجهاز الأساسية
-        const deviceVerdict = deviceIntegrity.deviceRecognitionVerdict || [];
-        
-        // الحكم النهائي العام
+        // 5. استخراج الحكم على نزاهة الجهاز
+        // 🔴 تم التعديل: إضافة فحص لـ deviceRecognitionVerdict وإعطاء قيمة افتراضية [] إذا لم يكن موجوداً
+        const deviceVerdict = deviceIntegrity?.deviceRecognitionVerdict || [];
+        const deviceVerdictString = deviceVerdict.toString(); 
+
+        console.log('✅ تم فك تشفير الـ Token بنجاح.');
+        console.log('   - Nonce: ', requestDetails.nonce);
+        console.log('   - Device Recognition Verdict: ', deviceVerdictString);
+
+        // 6. الحكم النهائي: يجب أن يتطابق اسم الحزمة ويجتاز فحص نزاهة الجهاز الأساسية
         const finalVerdict = isPackageNameValid && deviceVerdict.includes('MEETS_DEVICE_INTEGRITY');
 
         // إرسال الرد إلى تطبيق الأندرويد
