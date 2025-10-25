@@ -1,7 +1,8 @@
+
 // استيراد المكتبات الضرورية
 const express = require('express');
-const { PlayIntegrity } = require('@google-cloud/playintegrity');
-const cors = require('cors'); // لإتاحة الوصول من أي مصدر (لبيئات التطوير والاختبار)
+const { google } = require('googleapis'); // المكتبة الصحيحة للتواصل مع Google APIs
+const cors = require('cors'); 
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,22 +11,41 @@ const PORT = process.env.PORT || 3000;
 // ** إعدادات الأمان والمشروع - يجب تعديلها **
 // --------------------------------------------------------------------------------
 
-// رقم مشروع Google Cloud (يجب أن يتطابق مع القيمة في تطبيق الأندرويد)
+// رقم مشروع Google Cloud (تأكد من مطابقته للقيمة في تطبيق الأندرويد)
 const CLOUD_PROJECT_NUMBER = '893510491856'; 
 
-// المفتاح السري الخاص بك الذي يجب أن يتطابق مع X-API-KEY في تطبيق الأندرويد
+// المفتاح السري الذي يجب أن يتطابق مع X-API-KEY في تطبيق الأندرويد
 const X_API_KEY = 'MoroccoSecret2025';
 
 // --------------------------------------------------------------------------------
-// ** إعدادات بيانات الاعتماد (Authentication) **
+// ** إعدادات بيانات الاعتماد و Play Integrity Client **
 // --------------------------------------------------------------------------------
 
 /*
  * هام: لكي يعمل هذا الكود، يجب تعيين متغير البيئة GOOGLE_APPLICATION_CREDENTIALS
- * ليشير إلى ملف مفتاح حساب الخدمة (Service Account Key JSON) الخاص بك من Google Cloud.
- * ستقوم المكتبة بتحميل بيانات الاعتماد تلقائياً.
+ * ليشير إلى ملف مفتاح حساب الخدمة (JSON) الخاص بك.
  */
-const playIntegrityClient = new PlayIntegrity();
+let playIntegrity;
+
+try {
+    // إعداد المصادقة تلقائياً باستخدام GoogleAuth
+    const auth = new google.auth.GoogleAuth({
+        // يجب تحديد النطاق (Scope) الصحيح للوصول إلى واجهة Play Integrity API
+        scopes: ['https://www.googleapis.com/auth/playintegrity']
+    });
+
+    // تهيئة عميل Play Integrity باستخدام بيانات الاعتماد
+    playIntegrity = google.playintegrity({
+        version: 'v1',
+        auth: auth
+    });
+    console.log('✅ تم تهيئة عميل Play Integrity بنجاح.');
+
+} catch (e) {
+    console.error('❌ فشل في تهيئة GoogleAuth. تأكد من تعيين متغير البيئة GOOGLE_APPLICATION_CREDENTIALS بشكل صحيح.');
+    console.error(e.message);
+}
+
 
 // تفعيل Middleware
 app.use(cors());
@@ -50,19 +70,26 @@ app.post('/check-integrity', async (req, res) => {
         console.error('❌ فشل التحقق: Token أو Package Name مفقود في الطلب.');
         return res.status(400).json({ error: 'Missing integrityToken or packageName in request body' });
     }
+    
+    if (!playIntegrity) {
+        return res.status(503).json({ error: 'Service Unavailable: Google Play Integrity Client not initialized.' });
+    }
 
     try {
         console.log(`✅ بدأ التحقق من الـ Token للتطبيق: ${packageName}`);
         
         // 2. استدعاء واجهة برمجة تطبيقات Google لفك التشفير
-        const tokenResponse = await playIntegrityClient.decodeIntegrityToken({
+        const response = await playIntegrity.v1.decodeIntegrityToken({
             packageName: packageName,
-            integrityToken: integrityToken,
-            cloudProjectNumber: CLOUD_PROJECT_NUMBER,
+            name: packageName, // يتم استخدام اسم الحزمة كاسم للمورد
+            requestBody: {
+                integrityToken: integrityToken,
+            },
         });
 
         // استخراج محتويات الحمولة (Payload) المفككة
-        const { tokenPayloadExternal, tokenPayloadExternal: { requestDetails, appIntegrity, deviceIntegrity } } = tokenResponse;
+        const tokenPayloadExternal = response.data.tokenPayloadExternal;
+        const { requestDetails, appIntegrity, deviceIntegrity } = tokenPayloadExternal;
 
         console.log('✅ تم فك تشفير الـ Token بنجاح.');
         console.log('   - Nonce: ', requestDetails.nonce);
@@ -70,31 +97,27 @@ app.post('/check-integrity', async (req, res) => {
         
         // 3. التحقق الأمني من الـ Payload
         
-        // التحقق من اسم الحزمة
+        // التحقق من اسم الحزمة (مهم جداً)
         const isPackageNameValid = appIntegrity.packageName === packageName;
         if (!isPackageNameValid) {
-            console.warn('⚠️ تحذير: اسم الحزمة غير متطابق! قد يشير إلى تلاعب.');
+            console.warn('⚠️ تحذير: اسم الحزمة غير متطابق!');
         }
 
-        // ملاحظة أمنية: هنا يجب عليك التحقق من الـ Nonce (nonce)
-        // في مشروع فعلي، يجب تخزين الـ Nonce في قاعدة بيانات للتأكد من استخدامه مرة واحدة فقط.
+        // الحكم النهائي
+        const deviceVerdict = deviceIntegrity.deviceRecognitionVerdict;
 
         // 4. إرسال الرد إلى تطبيق الأندرويد
-        // نرسل التفاصيل الكاملة حالياً ليتمكن تطبيق الأندرويد من عرضها،
-        // لكن الممارسة الأمنية الأفضل هي إرسال (Yes/No) فقط.
         res.status(200).json({
             success: true,
-            // الحكم النهائي بناءً على ما إذا كان الجهاز سليمًا أم لا (MEETS_DEVICE_INTEGRITY)
-            finalVerdict: deviceIntegrity.deviceRecognitionVerdict.includes('MEETS_DEVICE_INTEGRITY'),
+            // نتحقق مما إذا كان الحكم يتضمن MEETS_DEVICE_INTEGRITY
+            finalVerdict: deviceVerdict.includes('MEETS_DEVICE_INTEGRITY'),
             packageNameCheck: isPackageNameValid,
-            // نرسل الحمولة المفككة الكاملة لعرضها في التطبيق
             verdictDetails: tokenPayloadExternal
         });
 
     } catch (error) {
         console.error('❌ خطأ في فك تشفير الـ Token:', error.message);
         
-        // إرسال رسالة خطأ قياسية إلى العميل
         res.status(500).json({
             success: false,
             error: 'Failed to decode integrity token on server.',
