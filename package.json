@@ -1,17 +1,13 @@
-{
   "name": "play-integrity-server",
-  "version": "2.0.0",
-  "description": "Play Integrity Server with Real Google API",
+  "version": "1.0.0",
+  "description": "Backend server for verifying Google Play Integrity Token",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node server.js"
   },
   "dependencies": {
+    "@google-cloud/playintegrity": "^1.0.0",
     "express": "^4.18.2",
-    "google-auth-library": "^9.0.0"
-  },
-  "engines": {
-    "node": ">=16.0.0"
+    "cors": "^2.8.5"
   }
 }
