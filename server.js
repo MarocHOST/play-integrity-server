@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 const EXPECTED_PACKAGE_NAME = process.env.EXPECTED_PACKAGE_NAME || 'org.morocco.mar'; 
 console.log(`[Config] EXPECTED_PACKAGE_NAME: ${EXPECTED_PACKAGE_NAME}`);
 
-// رقم مشروع Google Cloud (تأكد من مطابقته للقيمة في القيمة في ملف AndroidManifest.xml)
+// رقم مشروع Google Cloud (تأكد من مطابقته للقيمة في ملف AndroidManifest.xml)
 const CLOUD_PROJECT_NUMBER = '893510491856'; 
 
 // قراءة مفتاح API من متغير البيئة
@@ -103,7 +103,7 @@ app.post('/check-integrity', async (req, res) => {
         const deviceIntegrity = tokenPayloadExternal?.deviceIntegrity || {};
         const accountDetails = tokenPayloadExternal?.accountDetails || {};
         
-        // 4. التحقق الأمني: اسم الحزمة
+        // 4. التحقق الأمني: اسم الحزمة (نعتمد على حقل requestPackageName ليكون متوفراً دائماً)
         const packageNameInToken = requestDetails.requestPackageName;
         const isPackageNameValid = packageNameInToken === EXPECTED_PACKAGE_NAME; 
         
@@ -114,24 +114,26 @@ app.post('/check-integrity', async (req, res) => {
         }
 
         // 5. استخراج الحكم على نزاهة الجهاز
-        // الحكم هو مصفوفة، وقد تكون فارغة [] إذا كان الرد فارغاً
         const deviceVerdict = deviceIntegrity?.deviceRecognitionVerdict || [];
         const deviceVerdictString = deviceVerdict.toString(); 
 
         console.log('✅ تم فك تشفير الـ Token بنجاح.');
         console.log('   - Nonce: ', requestDetails.nonce);
-        console.log('   - Device Recognition Verdict: ', deviceVerdictString || 'الحكم مفقود في بيئة الاختبار');
+        console.log('   - Device Recognition Verdict: ', deviceVerdictString || 'الحكم مفقود');
 
 
-        // 6. الحكم النهائي:
-        // *** تعديل خاص ببيئة الاختبار: نكتفي بنجاح فحص اسم الحزمة ***
-        // في بيئة الإنتاج: يجب أن يكون الحكم النهائي هو: isPackageNameValid && isDeviceIntegritySufficient
-        const finalVerdict = isPackageNameValid;
+        // 6. الحكم النهائي (منطق الأمان الكامل)
+        // الجهاز يجب أن يجتاز "MEETS_BASIC_INTEGRITY" على الأقل.
+        const isDeviceIntegritySufficient = deviceVerdict.includes('MEETS_BASIC_INTEGRITY');
+
+        // الحكم النهائي يكون صحيحًا فقط إذا تحقق شرطان: 
+        // 1. اسم الحزمة صحيح (isPackageNameValid)
+        // 2. الجهاز يحقق الحد الأدنى من النزاهة (isDeviceIntegritySufficient)
+        const finalVerdict = isPackageNameValid && isDeviceIntegritySufficient;
 
         // إرسال الرد إلى تطبيق الأندرويد
         res.status(200).json({
             success: true,
-            // هذا سيسمح بمرور الاختبار طالما أن اسم الحزمة صحيح
             finalVerdict: finalVerdict,
             packageNameCheck: isPackageNameValid,
             verdictDetails: tokenPayloadExternal
