@@ -10,15 +10,18 @@ const PORT = process.env.PORT || 3000;
 // ** إعدادات الأمان والمشروع - يجب تعديلها **
 // --------------------------------------------------------------------------------
 
-// 🔴 جديد: اسم الحزمة المتوقع (يجب أن يتطابق مع 'org.morocco.mar')
-// *يمكنك أيضاً تعيين هذا كمتغير بيئة في Render بدلاً من الثابت*
-const EXPECTED_PACKAGE_NAME = 'org.morocco.mar'; 
+// 🔴 تم التعديل: قراءة اسم الحزمة المتوقع من متغير البيئة، والاحتفاظ بقيمة افتراضية آمنة
+const EXPECTED_PACKAGE_NAME = process.env.EXPECTED_PACKAGE_NAME || 'org.morocco.mar'; 
+console.log(`[Config] EXPECTED_PACKAGE_NAME: ${EXPECTED_PACKAGE_NAME}`);
 
 // رقم مشروع Google Cloud (تأكد من مطابقته للقيمة في تطبيق الأندرويد)
 const CLOUD_PROJECT_NUMBER = '893510491856'; 
 
-// المفتاح السري الذي يجب أن يتطابق مع X-API-KEY في تطبيق الأندرويد
-const X_API_KEY = 'MoroccoSecret2025';
+// 🔴 تم التعديل: قراءة مفتاح API من متغير البيئة
+const X_API_KEY = process.env.API_KEY || 'MoroccoSecret2025';
+if (X_API_KEY === 'MoroccoSecret2025') {
+    console.warn("⚠️ تحذير: يرجى تغيير المفتاح السري 'MoroccoSecret2025' في متغير البيئة.");
+}
 
 // --------------------------------------------------------------------------------
 // ** إعدادات بيانات الاعتماد و Play Integrity Client **
@@ -105,7 +108,7 @@ app.post('/check-integrity', async (req, res) => {
         console.log('   - Device Recognition Verdict: ', deviceIntegrity.deviceRecognitionVerdict);
         
         // 3. التحقق الأمني: اسم الحزمة
-        const isPackageNameValid = appIntegrity.packageName === EXPECTED_PACKAGE_NAME; // 🔴 مقارنة بالثابت الجديد
+        const isPackageNameValid = appIntegrity.packageName === EXPECTED_PACKAGE_NAME; 
         if (!isPackageNameValid) {
             console.warn('⚠️ تحذير: اسم الحزمة غير متطابق! المتوقع:', EXPECTED_PACKAGE_NAME, 'المُرسل في الرمز:', appIntegrity.packageName);
         } else {
@@ -115,8 +118,7 @@ app.post('/check-integrity', async (req, res) => {
         // 4. الحكم النهائي: تحقق من نزاهة الجهاز الأساسية
         const deviceVerdict = deviceIntegrity.deviceRecognitionVerdict || [];
         
-        // 🔴 الحكم النهائي العام: يجب أن يتطابق اسم الحزمة (isPackageNameValid) 
-        // و يجب أن يجتاز فحص نزاهة الجهاز (MEETS_DEVICE_INTEGRITY)
+        // الحكم النهائي العام
         const finalVerdict = isPackageNameValid && deviceVerdict.includes('MEETS_DEVICE_INTEGRITY');
 
         // إرسال الرد إلى تطبيق الأندرويد
