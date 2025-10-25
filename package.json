@@ -1,14 +1,22 @@
 {
-  "name": "play-integrity-server",
-  "version": "1.0.1",
-  "description": "Backend server for verifying Google Play Integrity Token using googleapis",
+  "name": "play-integrity-verification-server",
+  "version": "1.0.0",
+  "description": "Backend server for verifying Google Play Integrity tokens.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "googleapis": "^129.0.0",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "cors": "^2.8.5"
-  }
+    "googleapis": "^128.0.0" 
+  },
+  "keywords": [
+    "play-integrity",
+    "node",
+    "express"
+  ],
+  "author": "Your Name",
+  "license": "ISC"
 }
