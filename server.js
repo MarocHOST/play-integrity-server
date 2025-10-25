@@ -2,7 +2,6 @@
 const express = require('express');
 const { google } = require('googleapis'); 
 const cors = require('cors'); 
-const fs = require('fs'); // لاستخدام نظام الملفات
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,12 +17,11 @@ const CLOUD_PROJECT_NUMBER = '893510491856';
 const X_API_KEY = 'MoroccoSecret2025';
 
 // --------------------------------------------------------------------------------
-// ** إعدادات بيانات الاعتماد و Play Integrity Client (تم التعديل هنا) **
+// ** إعدادات بيانات الاعتماد و Play Integrity Client **
 // --------------------------------------------------------------------------------
 
 let playIntegrity;
 
-// 1. قراءة بيانات الاعتماد من متغير البيئة (الذي وضعته في Render)
 const credentialsJsonString = process.env.GOOGLE_CREDENTIALS_JSON;
 
 try {
@@ -31,16 +29,13 @@ try {
         throw new Error("❌ متغير البيئة GOOGLE_CREDENTIALS_JSON مفقود. يجب إضافته في إعدادات Render.");
     }
     
-    // 2. تحليل النص JSON إلى كائن (Object)
     const credentials = JSON.parse(credentialsJsonString);
 
-    // 3. إعداد المصادقة باستخدام بيانات الاعتماد مباشرة
     const auth = new google.auth.GoogleAuth({
-        credentials: credentials, // نستخدم الكائن المحلل مباشرة
+        credentials: credentials,
         scopes: ['https://www.googleapis.com/auth/playintegrity']
     });
 
-    // 4. تهيئة عميل Play Integrity
     playIntegrity = google.playintegrity({
         version: 'v1',
         auth: auth
@@ -55,7 +50,7 @@ try {
 
 // تفعيل Middleware
 app.use(cors());
-app.use(express.json()); // لتحليل طلبات JSON الواردة في الجسم (Body)
+app.use(express.json()); 
 
 // --------------------------------------------------------------------------------
 // ** المسار الرئيسي للتحقق من النزاهة (Integrity Check Route) **
@@ -84,10 +79,10 @@ app.post('/check-integrity', async (req, res) => {
     try {
         console.log(`✅ بدأ التحقق من الـ Token للتطبيق: ${packageName}`);
         
-        // استدعاء واجهة برمجة تطبيقات Google لفك التشفير
+        // 2. استدعاء واجهة برمجة تطبيقات Google لفك التشفير - تم حذف "name"
         const response = await playIntegrity.v1.decodeIntegrityToken({
             packageName: packageName,
-            name: packageName, 
+            // ❌ كان هذا السطر هو سبب الخطأ: name: packageName,
             requestBody: {
                 integrityToken: integrityToken,
             },
@@ -95,6 +90,7 @@ app.post('/check-integrity', async (req, res) => {
 
         // استخراج محتويات الحمولة (Payload) المفككة
         const tokenPayloadExternal = response.data.tokenPayloadExternal;
+        // ... (بقية المنطق كما هو)
         const { requestDetails, appIntegrity, deviceIntegrity } = tokenPayloadExternal;
 
         console.log('✅ تم فك تشفير الـ Token بنجاح.');
