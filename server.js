@@ -121,17 +121,23 @@ app.post('/check-integrity', async (req, res) => {
         console.log('   - Nonce: ', requestDetails.nonce);
         console.log('   - Device Recognition Verdict: ', deviceVerdictString || 'الحكم مفقود');
 
-        // 6. الحكم النهائي (منطق الأمان الشامل)
-        // الجهاز يُعتبر سليمًا إذا كان الحكم يتضمن إما MEETS_BASIC_INTEGRITY أو MEETS_DEVICE_INTEGRITY
+        // 6. الحكم النهائي (منطق الأمان المخفف/المتسامح)
+        
+        // التحقق مما إذا كان الحكم يتضمن إما MEETS_BASIC_INTEGRITY أو MEETS_DEVICE_INTEGRITY
         const isBasicIntegrityMet = deviceVerdict.includes('MEETS_BASIC_INTEGRITY');
         const isDeviceIntegrityMet = deviceVerdict.includes('MEETS_DEVICE_INTEGRITY');
+        
+        // الحكم يكون ناجحاً إذا كان الحد الأدنى متحققا (BASIC) أو الحكم القوي (DEVICE)
+        const isDeviceIntegrityExplicitlySufficient = isBasicIntegrityMet || isDeviceIntegrityMet;
 
-        // isDeviceIntegritySufficient تكون true إذا كان أي من الحكمين (BASIC أو DEVICE) موجوداً
-        const isDeviceIntegritySufficient = isBasicIntegrityMet || isDeviceIntegrityMet;
+        // ** التعديل ليتناسب مع جهازك غير السليم الذي لا يرسل حكماً **
+        // نعتبر الجهاز سليماً إذا:
+        // أ) كان الحكم ناجحاً بشكل صريح (Basic/Device)
+        // ب) كان الحكم مفقوداً (Array فارغ) - هذا للتسامح مع أجهزة الاختبار والمعدلة التي لا ترسل حكماً.
+        
+        const isDeviceIntegritySufficient = isDeviceIntegrityExplicitlySufficient || deviceVerdict.length === 0;
 
-        // الحكم النهائي يكون صحيحًا فقط إذا تحقق شرطان: 
-        // 1. اسم الحزمة صحيح
-        // 2. الجهاز يحقق الحد الأدنى من النزاهة (BASIC)
+        // الحكم النهائي
         const finalVerdict = isPackageNameValid && isDeviceIntegritySufficient;
 
         // إرسال الرد إلى تطبيق الأندرويد
