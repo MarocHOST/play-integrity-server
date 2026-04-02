@@ -3,21 +3,16 @@ const { google } = require('googleapis');
 const cors = require('cors');
 
 const app = express();
-
-// تفعيل CORS للسماح لتطبيق الأندرويد بالاتصال بالسيرفر
 app.use(cors());
-// تفعيل قراءة بيانات JSON المرسلة من التطبيق
 app.use(express.json());
 
-// إعداد الاتصال بجوجل (تأكد أن GOOGLE_SERVICE_ACCOUNT موجود في Vercel Variables)
+// إعداد المصادقة
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT),
   scopes: ['https://www.googleapis.com/auth/play_integrity'],
 });
 
-const playintegrity = google.playintegrity('v1');
-
-// المسار الذي يستقبله التطبيق (https://your-url.vercel.app/api/verify)
+// تعريف دالة معالجة الطلب
 app.post('/api/verify', async (req, res) => {
   const { token } = req.body;
 
@@ -26,23 +21,22 @@ app.post('/api/verify', async (req, res) => {
   }
 
   try {
-    // طلب فك تشفير الـ Token من جوجل
+    const client = await auth.getClient();
+    const playintegrity = google.playintegrity({ version: 'v1', auth: client });
+
+    // استدعاء الدالة بالطريقة الصحيحة والمحدثة
     const response = await playintegrity.decodeIntegrityToken({
-      packageName: 'mtaate.checkintegrityma', // اسم حزمة تطبيقك
-      decodeIntegrityTokenRequest: {
-        integrityToken: token
+      packageName: 'mtaate.checkintegrityma',
+      requestBody: {
+        integrityToken: token,
       },
-    }, {
-      auth: await auth.getClient()
     });
 
-    // إرسال البيانات النهائية (النتائج) إلى تطبيق الأندرويد
-    // نرسل الجزء الذي يحتوي على (deviceIntegrity, appIntegrity, accountDetails)
+    // إرسال النتيجة للتطبيق
     res.json(response.data.tokenPayloadExternal);
-    
+
   } catch (error) {
-    console.error('Integrity Error:', error.message);
-    // إرجاع الخطأ للتطبيق ليظهر في السجلات
+    console.error('Integrity Error Details:', error.message);
     res.status(500).json({ 
       error: 'Google API Error', 
       message: error.message 
@@ -50,5 +44,4 @@ app.post('/api/verify', async (req, res) => {
   }
 });
 
-// تصدير التطبيق ليعمل كـ Serverless Function على Vercel
 module.exports = app;
