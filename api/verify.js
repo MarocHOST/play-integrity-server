@@ -12,16 +12,19 @@ const auth = new GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/play_integrity'],
 });
 
+// إضافة هذا الجزء لعلاج رسالة Cannot GET في المتصفح
+app.get('/api/verify', (req, res) => {
+  res.send("Server is running! Waiting for POST request from Android app.");
+});
+
 app.post('/api/verify', async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'Token is required' });
 
   try {
-    // 1. الحصول على Access Token
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
 
-    // 2. إرسال الطلب لجوجل باستخدام axios
     const packageName = 'mtaate.checkintegrityma';
     const url = `https://playintegrity.googleapis.com/v1/${packageName}:decodeIntegrityToken`;
 
@@ -35,11 +38,11 @@ app.post('/api/verify', async (req, res) => {
       }
     );
 
-    // 3. إرسال النتيجة للتطبيق
     res.json(response.data.tokenPayloadExternal);
 
   } catch (error) {
-    console.error('Final Fix Error:', error.response ? error.response.data : error.message);
+    // طباعة تفصيلية للخطأ في سجلات Vercel لمعرفة السبب الحقيقي
+    console.error('Full Error:', error.response ? error.response.data : error.message);
     res.status(500).json({ 
       error: 'Google API Error', 
       message: error.message 
