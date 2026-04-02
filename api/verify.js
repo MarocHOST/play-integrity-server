@@ -1,5 +1,6 @@
 const express = require('express');
 const { GoogleAuth } = require('google-auth-library');
+const axios = require('axios');
 const cors = require('cors');
 
 const app = express();
@@ -16,35 +17,33 @@ app.post('/api/verify', async (req, res) => {
   if (!token) return res.status(400).json({ error: 'Token is required' });
 
   try {
-    // 1. جلب توكن المصادقة من جوجل
+    // 1. الحصول على Access Token
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
 
-    // 2. مراسلة رابط Play Integrity مباشرة
+    // 2. إرسال الطلب لجوجل باستخدام axios
     const packageName = 'mtaate.checkintegrityma';
     const url = `https://playintegrity.googleapis.com/v1/${packageName}:decodeIntegrityToken`;
 
-    const googleResponse = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ integrityToken: token }),
-    });
-
-    const data = await googleResponse.json();
-
-    if (data.error) {
-      throw new Error(data.error.message);
-    }
+    const response = await axios.post(url, 
+      { integrityToken: token },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken.token}`,
+          'Content-Type': 'application/json',
+        }
+      }
+    );
 
     // 3. إرسال النتيجة للتطبيق
-    res.json(data.tokenPayloadExternal);
+    res.json(response.data.tokenPayloadExternal);
 
   } catch (error) {
-    console.error('Final Fix Error:', error.message);
-    res.status(500).json({ error: 'Google API Error', message: error.message });
+    console.error('Final Fix Error:', error.response ? error.response.data : error.message);
+    res.status(500).json({ 
+      error: 'Google API Error', 
+      message: error.message 
+    });
   }
 });
 
