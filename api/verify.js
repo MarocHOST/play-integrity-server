@@ -20,12 +20,14 @@ app.post('/api/verify', async (req, res) => {
 
   try {
     const client = await auth.getClient();
-    // تغيير طريقة التعريف هنا لضمان الوصول للدالة
+    
+    // الطريقة الصحيحة للتعريف في الإصدارات الحديثة
     const playintegrity = google.playintegrity({
         version: 'v1',
         auth: client
     });
 
+    // استخدام الـ requestBody بشكل صحيح
     const response = await playintegrity.decodeIntegrityToken({
       packageName: 'mtaate.checkintegrityma',
       requestBody: {
