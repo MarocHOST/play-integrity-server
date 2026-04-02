@@ -6,13 +6,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// إعداد المصادقة
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT),
   scopes: ['https://www.googleapis.com/auth/play_integrity'],
 });
 
-// تعريف دالة معالجة الطلب
 app.post('/api/verify', async (req, res) => {
   const { token } = req.body;
 
@@ -22,17 +20,19 @@ app.post('/api/verify', async (req, res) => {
 
   try {
     const client = await auth.getClient();
-    const playintegrity = google.playintegrity({ version: 'v1', auth: client });
+    // تغيير طريقة التعريف هنا لضمان الوصول للدالة
+    const playintegrity = google.playintegrity({
+        version: 'v1',
+        auth: client
+    });
 
-    // استدعاء الدالة بالطريقة الصحيحة والمحدثة
     const response = await playintegrity.decodeIntegrityToken({
       packageName: 'mtaate.checkintegrityma',
       requestBody: {
-        integrityToken: token,
-      },
+        integrityToken: token
+      }
     });
 
-    // إرسال النتيجة للتطبيق
     res.json(response.data.tokenPayloadExternal);
 
   } catch (error) {
