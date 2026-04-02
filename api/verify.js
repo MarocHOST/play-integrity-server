@@ -1,50 +1,50 @@
 const express = require('express');
-const { google } = require('googleapis');
+const { GoogleAuth } = require('google-auth-library');
 const cors = require('cors');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// إعداد المصادقة
-const auth = new google.auth.GoogleAuth({
+const auth = new GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT),
   scopes: ['https://www.googleapis.com/auth/play_integrity'],
 });
 
 app.post('/api/verify', async (req, res) => {
   const { token } = req.body;
-
-  if (!token) {
-    return res.status(400).json({ error: 'Token is required' });
-  }
+  if (!token) return res.status(400).json({ error: 'Token is required' });
 
   try {
-    const authClient = await auth.getClient();
-    
-    // تعريف الخدمة وربطها بالمصادقة مباشرة
-    const playintegrity = google.playintegrity({
-      version: 'v1',
-      auth: authClient
+    // 1. جلب توكن المصادقة من جوجل
+    const client = await auth.getClient();
+    const accessToken = await client.getAccessToken();
+
+    // 2. مراسلة رابط Play Integrity مباشرة
+    const packageName = 'mtaate.checkintegrityma';
+    const url = `https://playintegrity.googleapis.com/v1/${packageName}:decodeIntegrityToken`;
+
+    const googleResponse = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ integrityToken: token }),
     });
 
-    // تنفيذ طلب فحص التوكن
-    const response = await playintegrity.decodeIntegrityToken({
-      packageName: 'mtaate.checkintegrityma',
-      requestBody: {
-        integrityToken: token
-      }
-    });
+    const data = await googleResponse.json();
 
-    // إرسال النتيجة للتطبيق
-    res.json(response.data.tokenPayloadExternal);
+    if (data.error) {
+      throw new Error(data.error.message);
+    }
+
+    // 3. إرسال النتيجة للتطبيق
+    res.json(data.tokenPayloadExternal);
 
   } catch (error) {
-    console.error('Integrity Error Details:', error.message);
-    res.status(500).json({ 
-      error: 'Google API Error', 
-      message: error.message 
-    });
+    console.error('Final Fix Error:', error.message);
+    res.status(500).json({ error: 'Google API Error', message: error.message });
   }
 });
 
