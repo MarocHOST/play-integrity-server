@@ -7,12 +7,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const auth = new GoogleAuth({
-  credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT),
-  scopes: ['https://www.googleapis.com/auth/play_integrity'],
-});
+// --- التعديل هنا ---
+const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+// هذا السطر هو الحل السحري لمشكلة الـ access token
+credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
 
-// إضافة هذا الجزء لعلاج رسالة Cannot GET في المتصفح
+const auth = new GoogleAuth({
+  credentials: credentials,
+  scopes: ['https://www.googleapis.com/auth/playintegrity'], // تأكد من الاسم الصحيح للـ scope
+});
+// ------------------
+
 app.get('/api/verify', (req, res) => {
   res.send("Server is running! Waiting for POST request from Android app.");
 });
@@ -23,7 +28,9 @@ app.post('/api/verify', async (req, res) => {
 
   try {
     const client = await auth.getClient();
+    // الحصول على التوكن بشكل أضمن
     const accessToken = await client.getAccessToken();
+    const tokenValue = accessToken.token || accessToken;
 
     const packageName = 'mtaate.checkintegrityma';
     const url = `https://playintegrity.googleapis.com/v1/${packageName}:decodeIntegrityToken`;
@@ -32,7 +39,7 @@ app.post('/api/verify', async (req, res) => {
       { integrityToken: token },
       {
         headers: {
-          Authorization: `Bearer ${accessToken.token}`,
+          Authorization: `Bearer ${tokenValue}`,
           'Content-Type': 'application/json',
         }
       }
@@ -41,11 +48,11 @@ app.post('/api/verify', async (req, res) => {
     res.json(response.data.tokenPayloadExternal);
 
   } catch (error) {
-    // طباعة تفصيلية للخطأ في سجلات Vercel لمعرفة السبب الحقيقي
     console.error('Full Error:', error.response ? error.response.data : error.message);
     res.status(500).json({ 
       error: 'Google API Error', 
-      message: error.message 
+      message: error.message,
+      details: error.response ? error.response.data : "No extra details"
     });
   }
 });
