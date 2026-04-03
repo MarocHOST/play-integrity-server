@@ -7,16 +7,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- التعديل هنا ---
 const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
-// هذا السطر هو الحل السحري لمشكلة الـ access token
 credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
 
 const auth = new GoogleAuth({
   credentials: credentials,
-  scopes: ['https://www.googleapis.com/auth/playintegrity'], // تأكد من الاسم الصحيح للـ scope
+  scopes: ['https://www.googleapis.com/auth/playintegrity'],
 });
-// ------------------
 
 app.get('/api/verify', (req, res) => {
   res.send("Server is running! Waiting for POST request from Android app.");
@@ -28,7 +25,6 @@ app.post('/api/verify', async (req, res) => {
 
   try {
     const client = await auth.getClient();
-    // الحصول على التوكن بشكل أضمن
     const accessToken = await client.getAccessToken();
     const tokenValue = accessToken.token || accessToken;
 
